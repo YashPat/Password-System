@@ -112,8 +112,8 @@ def recovery_mode():
         print_separator()
 
 
-def main():
-    """Main function with interactive menu."""
+def plain_main():
+    """Plain prompt-based menu (the original CLI)."""
     print("=" * 60)
     print("PASSWORD GENERATION & RECOVERY SYSTEM")
     print("=" * 60)
@@ -145,6 +145,16 @@ def main():
         except Exception as e:
             print(f"Error: {e}")
             sys.exit(1)
+
+
+def main():
+    """Run the TUI, or the plain prompt-based menu with --plain."""
+    if "--plain" in sys.argv[1:]:
+        plain_main()
+    else:
+        from tui import run
+
+        run()
 
 
 if __name__ == "__main__":

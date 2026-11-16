@@ -1,0 +1,98 @@
+/* Palette
+   background #12111a   panel #1b1a27   border #2e2b40
+   text #e6e4f0   muted #8b87a6
+   mint #7ee8b5   violet #b39cf5   pink #f59ac0   peach #f9b98a */
+
+Screen {
+    background: #12111a;
+    color: #e6e4f0;
+    align: center middle;
+}
+
+Center {
+    height: auto;
+}
+
+.panel {
+    width: 64;
+    height: auto;
+    background: #1b1a27;
+    border: round #2e2b40;
+    padding: 2 4;
+}
+
+.title {
+    width: 100%;
+    text-align: center;
+    text-style: bold;
+    color: #7ee8b5;
+}
+
+.subtitle {
+    width: 100%;
+    text-align: center;
+    color: #8b87a6;
+    margin-bottom: 2;
+}
+
+.footer-hint {
+    width: 100%;
+    text-align: center;
+    color: #8b87a6;
+    margin-top: 2;
+}
+
+/* Menu */
+
+.option {
+    height: auto;
+    margin-bottom: 1;
+}
+
+.option Button {
+    width: 1fr;
+}
+
+.option .hint {
+    width: 8;
+    height: 3;
+    content-align: right middle;
+    color: #8b87a6;
+}
+
+/* Buttons */
+
+Button {
+    background: #24223a;
+    color: #e6e4f0;
+    border: tall #24223a;
+    text-style: bold;
+}
+
+Button:hover {
+    background: #2e2b48;
+}
+
+Button.mint:focus {
+    background: #7ee8b5;
+    color: #12111a;
+    border: tall #7ee8b5;
+}
+
+Button.violet:focus {
+    background: #b39cf5;
+    color: #12111a;
+    border: tall #b39cf5;
+}
+
+Button.pink:focus {
+    background: #f59ac0;
+    color: #12111a;
+    border: tall #f59ac0;
+}
+
+Button.peach:focus {
+    background: #f9b98a;
+    color: #12111a;
+    border: tall #f9b98a;
+}

@@ -12,16 +12,27 @@ A Python system that generates passwords using proof-of-work computation. Both p
 
 ## Installation
 
-1. Install required dependencies:
+1. Create a virtual environment and install the dependency (Textual):
 ```bash
-pip install -r requirements.txt
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
 ```
 
 ## Usage
 
-Run the main script:
+Run the app (opens the terminal UI):
 ```bash
-python main.py
+.venv/bin/python main.py
+```
+
+Prefer the original prompt-based menu? Run it with `--plain`:
+```bash
+.venv/bin/python main.py --plain
+```
+
+Run the tests:
+```bash
+.venv/bin/python -m unittest -v
 ```
 
 ### Mode 1: Generate New Password
