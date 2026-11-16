@@ -3,11 +3,16 @@ Password recovery module for expensive password computation.
 Uses iterative hashing to regenerate password from recovery keys.
 """
 import hashlib
+import time
 from typing import Optional
 import config
+from hashing import hash_chain
 
 # Password length constant (local to this module)
 _PASSWORD_LENGTH = 15
+
+# Iterations between progress updates
+_PROGRESS_INCREMENT = 5_000_000
 
 
 def hash_to_password(hash_bytes: bytes) -> str:
@@ -43,27 +48,34 @@ def _perform_iterative_hashing(seed_bytes: bytes, iterations: int, show_progress
     """
     # Start from the hashed seed
     current_hash = hashlib.sha256(seed_bytes).digest()
-    
-    if show_progress:
-        # Lightweight progress display: update on increments
-        # ANSI color code: \033[92m = bright green, \033[0m = reset
-        print("\033[92mComputing password:\033[0m ", end="", flush=True)
-        
-        for i in range(iterations):
-            current_hash = hashlib.sha256(current_hash).digest()
-            
-            progress_increment = 5000000
-            # Update progress every X iteration for performance reasons
-            if (i + 1) % progress_increment == 0 or (i + 1) == iterations:
-                percentage = ((i + 1) / iterations) * 100
-                print(f"\r\033[92mComputing password:\033[0m {percentage:0.3f}%", end="", flush=True)
-        
-        print()  # New line after completion
-    else:
-        # No progress display, just do the iterations
-        for _ in range(iterations):
-            current_hash = hashlib.sha256(current_hash).digest()
-    
+
+    if not show_progress:
+        return hash_chain(current_hash, iterations)
+
+    # Hash in chunks and update the progress line between chunks.
+    # The time remaining comes from the speed actually achieved so far,
+    # so it stays accurate if the machine speeds up or slows down.
+    # ANSI color code: \033[92m = bright green, \033[0m = reset
+    label = "\033[92mComputing password:\033[0m"
+    print(f"{label} 0.000%", end="", flush=True)
+
+    done = 0
+    start_time = time.perf_counter()
+    while done < iterations:
+        chunk = min(_PROGRESS_INCREMENT, iterations - done)
+        current_hash = hash_chain(current_hash, chunk)
+        done += chunk
+
+        percentage = (done / iterations) * 100
+        elapsed = time.perf_counter() - start_time
+        remaining = elapsed * (iterations - done) / done
+        status = f"{percentage:0.3f}%"
+        if done < iterations:
+            status += f"  ~{config.format_duration(remaining)} left"
+        # Trailing spaces clear any longer text left from the previous update
+        print(f"\r{label} {status}    ", end="", flush=True)
+
+    print()  # New line after completion
     return current_hash
 
 

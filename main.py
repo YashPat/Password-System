@@ -20,7 +20,7 @@ def generation_mode():
     print("PASSWORD GENERATION MODE")
     print_separator()
     print("Generating new password and recovery keys...")
-    print("(This will be quick)")
+    print("(This takes about 15 hours: the same work as a later recovery)")
     print()
     
     # Create password and keys
@@ -119,7 +119,7 @@ def main():
     print("=" * 60)
     print()
     print("Select mode:")
-    print("  1. Generate new password (quick)")
+    print("  1. Generate new password (~15 hours)")
     print("  2. Recover password from keys (~15 hours)")
     print("  3. Exit")
     print()
