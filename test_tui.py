@@ -16,6 +16,7 @@ from tui import (
     RecoverInputScreen,
     ResultScreen,
 )
+from utils import format_keys
 
 SIZE = (100, 32)
 KNOWN_KEYS = json.dumps({"seed": "ab" * 32, "iterations": 1000}, indent=2)
@@ -80,6 +81,14 @@ class RecoverFlowTest(unittest.IsolatedAsyncioTestCase):
             self.assertIs(pilot.app.screen, screen)
             self.assertNotEqual(text_of(screen, "#error").strip(), "")
 
+    async def test_json_that_is_not_keys_shows_error(self):
+        for keys_text in ("42", "null", "[1, 2]", '"seed iterations"'):
+            with self.subTest(keys_text=keys_text):
+                async with PasswordApp().run_test(size=SIZE) as pilot:
+                    screen = await open_recover_and_submit(pilot, keys_text)
+                    self.assertIs(pilot.app.screen, screen)
+                    self.assertNotEqual(text_of(screen, "#error").strip(), "")
+
 
 class GenerateFlowTest(unittest.IsolatedAsyncioTestCase):
     async def test_generate_flow(self):
@@ -140,6 +149,15 @@ class QuitTest(unittest.IsolatedAsyncioTestCase):
             self.assertLess(time.perf_counter() - started, 0.5)
             await pilot.click("#yes")
 
+    async def test_ctrl_q_mid_computation_asks(self):
+        async with PasswordApp().run_test(size=SIZE) as pilot:
+            await self.start_long_recovery(pilot)
+            await pilot.press("ctrl+q")
+            await pilot.pause()
+            self.assertIsInstance(pilot.app.screen, ConfirmQuitScreen)
+            self.assertTrue(pilot.app.is_running)
+            await pilot.click("#yes")
+
     async def test_quit_declined_keeps_computing(self):
         async with PasswordApp().run_test(size=SIZE) as pilot:
             screen = await self.start_long_recovery(pilot)
@@ -174,7 +192,7 @@ class LayoutTest(unittest.IsolatedAsyncioTestCase):
             MenuScreen(),
             RecoverInputScreen(),
             ComputingScreen("recover", "ab" * 32, 1000),
-            ResultScreen("f8442cf378e8c06", '{"seed": "' + "ab" * 32 + '", "iterations": 1000}'),
+            ResultScreen("f8442cf378e8c06", format_keys("ab" * 32, 123_456_789_012)),
         ]
         with mock.patch.object(ComputingScreen, "compute"):
             async with PasswordApp().run_test(size=(80, 24)) as pilot:
@@ -187,6 +205,52 @@ class LayoutTest(unittest.IsolatedAsyncioTestCase):
                 await pilot.app.push_screen(ConfirmQuitScreen())
                 await pilot.pause()
                 self.assertEqual(pilot.app.screen.query_one(".panel").max_scroll_y, 0)
+
+
+class UnsavedKeysTest(unittest.IsolatedAsyncioTestCase):
+    async def show_generated_result(self, pilot):
+        screen = ResultScreen("f8442cf378e8c06", format_keys("ab" * 32, 1000))
+        await pilot.app.switch_screen(screen)
+        await pilot.pause()
+        return screen
+
+    async def test_back_to_menu_with_uncopied_keys_asks(self):
+        async with PasswordApp().run_test(size=SIZE) as pilot:
+            result = await self.show_generated_result(pilot)
+            await pilot.click("#menu")
+            await wait_for_screen(pilot, ConfirmQuitScreen)
+            await pilot.click("#no")
+            await pilot.pause()
+            self.assertIs(pilot.app.screen, result)
+            await pilot.click("#menu")
+            await wait_for_screen(pilot, ConfirmQuitScreen)
+            await pilot.click("#yes")
+            await wait_for_screen(pilot, MenuScreen)
+
+    async def test_back_to_menu_after_copying_keys_does_not_ask(self):
+        with mock.patch("tui.copy_text"):
+            async with PasswordApp().run_test(size=SIZE) as pilot:
+                await self.show_generated_result(pilot)
+                await pilot.click("#copy-keys")
+                await pilot.click("#menu")
+                await wait_for_screen(pilot, MenuScreen)
+
+    async def test_back_to_menu_after_recovery_does_not_ask(self):
+        async with PasswordApp().run_test(size=SIZE) as pilot:
+            await pilot.app.switch_screen(ResultScreen("f8442cf378e8c06"))
+            await pilot.pause()
+            await pilot.click("#menu")
+            await wait_for_screen(pilot, MenuScreen)
+
+    async def test_ctrl_q_with_uncopied_keys_asks(self):
+        async with PasswordApp().run_test(size=SIZE) as pilot:
+            await self.show_generated_result(pilot)
+            await pilot.press("ctrl+q")
+            await pilot.pause()
+            self.assertIsInstance(pilot.app.screen, ConfirmQuitScreen)
+            await pilot.click("#yes")
+            await pilot.pause()
+        self.assertFalse(pilot.app.is_running)
 
 
 if __name__ == "__main__":

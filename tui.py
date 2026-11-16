@@ -123,21 +123,37 @@ def _is_hex(value: str) -> bool:
     return True
 
 
+UNSAVED_KEYS_WARNING = (
+    "The recovery keys haven't been copied. Without them this password "
+    "can't be recovered."
+)
+
+
 class ConfirmQuitScreen(ModalScreen[bool]):
-    """Asks before throwing away a running computation."""
+    """Asks before throwing away a computation or its result."""
 
     BINDINGS = [Binding("escape", "dismiss(False)", "Cancel", show=False)]
 
+    def __init__(
+        self,
+        title: str = "quit now?",
+        message: str = "The computation will stop and its progress will be lost.",
+        confirm_label: str = "Quit",
+        cancel_label: str = "Keep going",
+    ) -> None:
+        super().__init__()
+        self.title_text = title
+        self.message = message
+        self.confirm_label = confirm_label
+        self.cancel_label = cancel_label
+
     def compose(self) -> ComposeResult:
         with Vertical(id="confirm-panel", classes="panel"):
-            yield Static("quit now?", classes="title peach-text")
-            yield Static(
-                "The computation will stop and its progress will be lost.",
-                classes="subtitle",
-            )
+            yield Static(self.title_text, classes="title peach-text")
+            yield Static(self.message, classes="subtitle")
             with Horizontal(classes="actions"):
-                yield Button("Keep going", id="no", classes="mint")
-                yield Button("Quit", id="yes", classes="pink")
+                yield Button(self.cancel_label, id="no", classes="mint")
+                yield Button(self.confirm_label, id="yes", classes="pink")
 
     def on_mount(self) -> None:
         self.query_one("#no", Button).focus()
@@ -252,6 +268,7 @@ class ResultScreen(Screen):
         super().__init__()
         self.password = password
         self.keys_json = keys_json
+        self.keys_copied = False
 
     def compose(self) -> ComposeResult:
         with Center():
@@ -279,8 +296,40 @@ class ResultScreen(Screen):
             copy_text(self.app, self.password)
         elif event.button.id == "copy-keys" and self.keys_json is not None:
             copy_text(self.app, self.keys_json)
+            self.keys_copied = True
         elif event.button.id == "menu":
+            self.back_to_menu()
+
+    def has_unsaved_keys(self) -> bool:
+        return self.keys_json is not None and not self.keys_copied
+
+    def back_to_menu(self) -> None:
+        if not self.has_unsaved_keys():
             self.app.switch_screen(MenuScreen())
+            return
+
+        def leave_if_confirmed(confirmed: Optional[bool]) -> None:
+            if confirmed:
+                self.app.switch_screen(MenuScreen())
+
+        self.app.push_screen(
+            ConfirmQuitScreen("leave without the keys?", UNSAVED_KEYS_WARNING, "Leave", "Stay"),
+            leave_if_confirmed,
+        )
+
+    def action_confirm_quit(self) -> None:
+        if not self.has_unsaved_keys():
+            self.app.exit(return_code=0)
+            return
+
+        def quit_if_confirmed(confirmed: Optional[bool]) -> None:
+            if confirmed:
+                self.app.exit(return_code=0)
+
+        self.app.push_screen(
+            ConfirmQuitScreen("quit without the keys?", UNSAVED_KEYS_WARNING, "Quit", "Stay"),
+            quit_if_confirmed,
+        )
 
 
 class PasswordApp(App):
@@ -291,6 +340,16 @@ class PasswordApp(App):
 
     def on_mount(self) -> None:
         self.push_screen(MenuScreen())
+
+    async def action_quit(self) -> None:
+        """ctrl+q and the command palette's Quit: ask first where work could be lost."""
+        if isinstance(self.screen, ConfirmQuitScreen):
+            return  # already asking
+        confirm_quit = getattr(self.screen, "action_confirm_quit", None)
+        if confirm_quit is not None:
+            confirm_quit()
+        else:
+            self.exit(return_code=0)
 
 
 def run() -> None:

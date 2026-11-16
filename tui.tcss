@@ -216,7 +216,6 @@ Button.peach:focus {
 
 .warning {
     color: #f9b98a;
-    margin-top: 1;
 }
 
 /* Quit confirmation */

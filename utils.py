@@ -46,6 +46,8 @@ def parse_keys(keys_string: str) -> Optional[Dict]:
     """
     try:
         keys = json.loads(keys_string)
+        if not isinstance(keys, dict):
+            return None
         if "seed" not in keys or "iterations" not in keys:
             return None
         return keys
