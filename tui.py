@@ -1,11 +1,43 @@
 """
 Terminal UI for the password generation & recovery system.
 """
+import shutil
+import subprocess
+from datetime import datetime
+from typing import Literal, Optional
+
+from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
+from textual.color import Gradient
 from textual.containers import Center, Horizontal, Vertical
 from textual.screen import Screen
-from textual.widgets import Button, Label, Static
+from textual.widgets import Button, Label, ProgressBar, Static, TextArea
+from textual.worker import get_current_worker
+
+from password_generator import create_password_with_keys
+from password_recovery import ComputationCancelled, recover_password
+from progress import progress_stats
+from utils import format_keys, parse_keys, validate_keys
+
+MINT = "#7ee8b5"
+VIOLET = "#b39cf5"
+PINK = "#f59ac0"
+PEACH = "#f9b98a"
+
+KEYS_ERROR = (
+    "Those don't look like recovery keys. Paste the whole JSON block "
+    "with \"seed\" and \"iterations\"."
+)
+
+
+def copy_text(app: App, text: str) -> None:
+    """Copy text to the clipboard: pbcopy on macOS, else the terminal (OSC 52)."""
+    if shutil.which("pbcopy"):
+        subprocess.run(["pbcopy"], input=text, text=True, check=False)
+    else:
+        app.copy_to_clipboard(text)
+    app.notify("Copied to clipboard")
 
 
 class MenuScreen(Screen):
@@ -36,8 +68,177 @@ class MenuScreen(Screen):
         self.query_one("#generate", Button).focus()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "quit":
+        if event.button.id == "generate":
+            self.app.switch_screen(ComputingScreen("generate"))
+        elif event.button.id == "recover":
+            self.app.switch_screen(RecoverInputScreen())
+        elif event.button.id == "quit":
             self.app.exit(return_code=0)
+
+
+class RecoverInputScreen(Screen):
+    """Paste recovery keys to start a recovery."""
+
+    BINDINGS = [Binding("escape", "back", "Back", show=False)]
+
+    def compose(self) -> ComposeResult:
+        with Center():
+            with Vertical(id="recover-panel", classes="panel"):
+                yield Static("recover from keys", classes="title violet-text")
+                yield Static("paste the JSON block you saved when generating", classes="subtitle")
+                yield TextArea(id="keys", soft_wrap=True)
+                yield Static("", id="error")
+                with Horizontal(classes="actions"):
+                    yield Button("Back", id="back")
+                    yield Button("Start recovery", id="start", classes="violet")
+                yield Static("esc back", classes="footer-hint")
+
+    def on_mount(self) -> None:
+        self.query_one("#keys", TextArea).focus()
+
+    def action_back(self) -> None:
+        self.app.switch_screen(MenuScreen())
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "back":
+            self.action_back()
+        elif event.button.id == "start":
+            self.start_recovery()
+
+    def start_recovery(self) -> None:
+        keys = parse_keys(self.query_one("#keys", TextArea).text.strip())
+        if not keys or not validate_keys(keys) or not _is_hex(keys["seed"]):
+            self.query_one("#error", Static).update(KEYS_ERROR)
+            return
+        self.app.switch_screen(ComputingScreen("recover", keys["seed"], keys["iterations"]))
+
+
+def _is_hex(value: str) -> bool:
+    try:
+        bytes.fromhex(value)
+    except ValueError:
+        return False
+    return True
+
+
+class ComputingScreen(Screen):
+    """Live progress while the proof-of-work hashing runs."""
+
+    def __init__(
+        self,
+        mode: Literal["generate", "recover"],
+        seed: Optional[str] = None,
+        iterations: Optional[int] = None,
+    ) -> None:
+        super().__init__()
+        self.mode = mode
+        self.seed = seed
+        self.iterations = iterations
+
+    def compose(self) -> ComposeResult:
+        title = "generating password" if self.mode == "generate" else "recovering password"
+        status = "calibrating speed…" if self.mode == "generate" else "starting…"
+        with Center():
+            with Vertical(id="computing-panel", classes="panel"):
+                yield Static(title, classes="title")
+                yield Static(status, id="status", classes="subtitle")
+                yield ProgressBar(
+                    id="bar",
+                    total=100,
+                    show_eta=False,
+                    show_percentage=False,
+                    gradient=Gradient.from_colors(MINT, VIOLET, PINK, PEACH),
+                )
+                yield Static("0.000%", id="percent")
+                for stat_id, name in (
+                    ("speed", "speed"),
+                    ("elapsed", "elapsed"),
+                    ("left", "time left"),
+                    ("finish", "done around"),
+                ):
+                    with Horizontal(classes="stat"):
+                        yield Label(name, classes="stat-name")
+                        yield Static("—", id=stat_id, classes="stat-value")
+
+    def on_mount(self) -> None:
+        self.compute()
+
+    @work(thread=True, exclusive=True)
+    def compute(self) -> None:
+        worker = get_current_worker()
+
+        def on_progress(done: int, total: int, elapsed: float) -> None:
+            if worker.is_cancelled:
+                raise ComputationCancelled()
+            self.app.call_from_thread(self.show_progress, done, total, elapsed)
+
+        try:
+            if self.mode == "generate":
+                password, seed, iterations = create_password_with_keys(
+                    on_progress=on_progress, verbose=False
+                )
+                keys_json: Optional[str] = format_keys(seed, iterations)
+            else:
+                password = recover_password(self.seed, self.iterations, on_progress=on_progress)
+                keys_json = None
+        except ComputationCancelled:
+            return
+        self.app.call_from_thread(self.finish, password, keys_json)
+
+    def show_progress(self, done: int, total: int, elapsed: float) -> None:
+        stats = progress_stats(done, total, elapsed, datetime.now())
+        self.query_one("#status", Static).update("hashing")
+        self.query_one("#bar", ProgressBar).update(progress=stats.fraction * 100)
+        self.query_one("#percent", Static).update(stats.percent)
+        self.query_one("#speed", Static).update(stats.speed)
+        self.query_one("#elapsed", Static).update(stats.elapsed)
+        self.query_one("#left", Static).update(stats.left)
+        self.query_one("#finish", Static).update(stats.finish)
+
+    def finish(self, password: Optional[str], keys_json: Optional[str]) -> None:
+        if password is None:
+            self.app.notify("Recovery failed: check your keys.", severity="error")
+            self.app.switch_screen(RecoverInputScreen())
+            return
+        self.app.switch_screen(ResultScreen(password, keys_json))
+
+
+class ResultScreen(Screen):
+    """The finished password, plus recovery keys after generation."""
+
+    def __init__(self, password: str, keys_json: Optional[str] = None) -> None:
+        super().__init__()
+        self.password = password
+        self.keys_json = keys_json
+
+    def compose(self) -> ComposeResult:
+        with Center():
+            with Vertical(id="result-panel", classes="panel"):
+                yield Static("✓ password ready", classes="title")
+                yield Static("your password", classes="label")
+                with Horizontal(classes="secret-row"):
+                    yield Static(self.password, id="password", classes="secret")
+                    yield Button("Copy", id="copy-password", classes="mint")
+                if self.keys_json is not None:
+                    yield Static("recovery keys", classes="label")
+                    with Horizontal(classes="secret-row"):
+                        yield Static(self.keys_json, id="keys-json", classes="secret keys")
+                        yield Button("Copy", id="copy-keys", classes="violet")
+                    yield Static(
+                        "Save these keys somewhere safe. Without them this "
+                        "password can't be recovered.",
+                        classes="warning",
+                    )
+                with Horizontal(classes="actions"):
+                    yield Button("Back to menu", id="menu", classes="peach")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "copy-password":
+            copy_text(self.app, self.password)
+        elif event.button.id == "copy-keys" and self.keys_json is not None:
+            copy_text(self.app, self.keys_json)
+        elif event.button.id == "menu":
+            self.app.switch_screen(MenuScreen())
 
 
 class PasswordApp(App):

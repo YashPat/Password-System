@@ -96,3 +96,121 @@ Button.peach:focus {
     color: #12111a;
     border: tall #f9b98a;
 }
+
+.violet-text {
+    color: #b39cf5;
+}
+
+.actions {
+    height: auto;
+    align-horizontal: right;
+    margin-top: 1;
+}
+
+.actions Button {
+    margin-left: 2;
+}
+
+/* Recover input */
+
+#keys {
+    height: 9;
+    background: #12111a;
+    border: round #2e2b40;
+}
+
+#keys:focus {
+    border: round #b39cf5;
+}
+
+#error {
+    color: #f59ac0;
+    height: auto;
+    margin-top: 1;
+}
+
+/* Computing */
+
+#computing-panel {
+    width: 72;
+    padding: 2 6;
+}
+
+#bar {
+    width: 100%;
+    margin-top: 1;
+}
+
+#bar Bar {
+    width: 1fr;
+}
+
+#percent {
+    width: 100%;
+    text-align: center;
+    text-style: bold;
+    color: #e6e4f0;
+    margin-top: 1;
+    margin-bottom: 2;
+}
+
+.stat {
+    height: 1;
+    margin-bottom: 1;
+}
+
+.stat-name {
+    width: 1fr;
+    color: #8b87a6;
+}
+
+.stat-value {
+    width: auto;
+    text-style: bold;
+}
+
+#speed { color: #7ee8b5; }
+#elapsed { color: #b39cf5; }
+#left { color: #f9b98a; }
+#finish { color: #f59ac0; }
+
+/* Result */
+
+#result-panel {
+    width: 76;
+}
+
+.label {
+    color: #8b87a6;
+    margin-top: 1;
+}
+
+.secret-row {
+    height: auto;
+    margin-top: 1;
+}
+
+.secret {
+    width: 1fr;
+    height: auto;
+    padding: 1 2;
+    background: #12111a;
+    border: round #2e2b40;
+    color: #7ee8b5;
+    text-style: bold;
+}
+
+.secret.keys {
+    color: #b39cf5;
+    text-style: none;
+}
+
+.secret-row Button {
+    margin-left: 2;
+    min-width: 10;
+}
+
+.warning {
+    color: #f9b98a;
+    margin-top: 1;
+}
