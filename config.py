@@ -42,26 +42,31 @@ def measure_speed(min_seconds: float = CALIBRATION_SECONDS) -> float:
             return done / elapsed_time
 
 
-def calibrate_iterations(target_time: float = TARGET_COMPUTATION_TIME) -> int:
+def calibrate_iterations(
+    target_time: float = TARGET_COMPUTATION_TIME, verbose: bool = True
+) -> int:
     """
     Calibrate the number of iterations needed to achieve target computation time.
 
     Args:
         target_time: Target time in seconds (default: 15 hours)
+        verbose: Whether to print progress and results (default: True)
 
     Returns:
         Estimated number of iterations needed for target time
     """
-    print(f"Calibrating computation speed (about {CALIBRATION_SECONDS:.0f} seconds)...")
+    if verbose:
+        print(f"Calibrating computation speed (about {CALIBRATION_SECONDS:.0f} seconds)...")
 
     iterations_per_second = measure_speed()
 
     # Calculate total iterations needed
     total_iterations = int(iterations_per_second * target_time)
 
-    print(f"Calibration complete:")
-    print(f"  Speed: {iterations_per_second:,.0f} iterations/second")
-    print(f"  Estimated iterations for {target_time/3600:.1f} hours: {total_iterations:,}")
+    if verbose:
+        print(f"Calibration complete:")
+        print(f"  Speed: {iterations_per_second:,.0f} iterations/second")
+        print(f"  Estimated iterations for {target_time/3600:.1f} hours: {total_iterations:,}")
 
     return total_iterations
 
