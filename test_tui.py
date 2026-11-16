@@ -253,5 +253,68 @@ class UnsavedKeysTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(pilot.app.is_running)
 
 
+def focused_id(pilot):
+    return getattr(pilot.app.focused, "id", None)
+
+
+class KeyboardNavigationTest(unittest.IsolatedAsyncioTestCase):
+    async def test_confirm_box_left_right_move_between_buttons(self):
+        async with PasswordApp().run_test(size=SIZE) as pilot:
+            await pilot.app.push_screen(ConfirmQuitScreen())
+            await pilot.pause()
+            self.assertEqual(focused_id(pilot), "no")
+            await pilot.press("right")
+            self.assertEqual(focused_id(pilot), "yes")
+            await pilot.press("left")
+            self.assertEqual(focused_id(pilot), "no")
+
+    async def test_result_up_down_move_between_buttons(self):
+        async with PasswordApp().run_test(size=SIZE) as pilot:
+            await pilot.app.switch_screen(
+                ResultScreen("f8442cf378e8c06", format_keys("ab" * 32, 1000))
+            )
+            await pilot.pause()
+            self.assertEqual(focused_id(pilot), "copy-password")
+            await pilot.press("down")
+            self.assertEqual(focused_id(pilot), "copy-keys")
+            await pilot.press("down")
+            self.assertEqual(focused_id(pilot), "menu")
+            await pilot.press("up")
+            self.assertEqual(focused_id(pilot), "copy-keys")
+
+    async def test_result_escape_goes_to_menu(self):
+        async with PasswordApp().run_test(size=SIZE) as pilot:
+            await pilot.app.switch_screen(ResultScreen("f8442cf378e8c06"))
+            await pilot.pause()
+            await pilot.press("escape")
+            await wait_for_screen(pilot, MenuScreen)
+
+    async def test_result_escape_with_uncopied_keys_asks(self):
+        async with PasswordApp().run_test(size=SIZE) as pilot:
+            await pilot.app.switch_screen(
+                ResultScreen("f8442cf378e8c06", format_keys("ab" * 32, 1000))
+            )
+            await pilot.pause()
+            await pilot.press("escape")
+            await wait_for_screen(pilot, ConfirmQuitScreen)
+
+    async def test_result_q_quits(self):
+        async with PasswordApp().run_test(size=SIZE) as pilot:
+            await pilot.app.switch_screen(ResultScreen("f8442cf378e8c06"))
+            await pilot.pause()
+            await pilot.press("q")
+            await pilot.pause()
+        self.assertFalse(pilot.app.is_running)
+
+    async def test_result_q_with_uncopied_keys_asks(self):
+        async with PasswordApp().run_test(size=SIZE) as pilot:
+            await pilot.app.switch_screen(
+                ResultScreen("f8442cf378e8c06", format_keys("ab" * 32, 1000))
+            )
+            await pilot.pause()
+            await pilot.press("q")
+            await wait_for_screen(pilot, ConfirmQuitScreen)
+
+
 if __name__ == "__main__":
     unittest.main()

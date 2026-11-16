@@ -132,7 +132,11 @@ UNSAVED_KEYS_WARNING = (
 class ConfirmQuitScreen(ModalScreen[bool]):
     """Asks before throwing away a computation or its result."""
 
-    BINDINGS = [Binding("escape", "dismiss(False)", "Cancel", show=False)]
+    BINDINGS = [
+        Binding("escape", "dismiss(False)", "Cancel", show=False),
+        Binding("left", "app.focus_previous", "Left", show=False),
+        Binding("right", "app.focus_next", "Right", show=False),
+    ]
 
     def __init__(
         self,
@@ -264,6 +268,13 @@ class ComputingScreen(Screen):
 class ResultScreen(Screen):
     """The finished password, plus recovery keys after generation."""
 
+    BINDINGS = [
+        Binding("up", "app.focus_previous", "Up", show=False),
+        Binding("down", "app.focus_next", "Down", show=False),
+        Binding("escape", "back_to_menu", "Menu", show=False),
+        Binding("q", "confirm_quit", "Quit", show=False),
+    ]
+
     def __init__(self, password: str, keys_json: Optional[str] = None) -> None:
         super().__init__()
         self.password = password
@@ -289,6 +300,7 @@ class ResultScreen(Screen):
                         classes="warning",
                     )
                 with Horizontal(classes="actions"):
+                    yield Static("↑↓ move  ·  esc menu  ·  q quit", classes="inline-hint")
                     yield Button("Back to menu", id="menu", classes="peach")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -298,12 +310,12 @@ class ResultScreen(Screen):
             copy_text(self.app, self.keys_json)
             self.keys_copied = True
         elif event.button.id == "menu":
-            self.back_to_menu()
+            self.action_back_to_menu()
 
     def has_unsaved_keys(self) -> bool:
         return self.keys_json is not None and not self.keys_copied
 
-    def back_to_menu(self) -> None:
+    def action_back_to_menu(self) -> None:
         if not self.has_unsaved_keys():
             self.app.switch_screen(MenuScreen())
             return
