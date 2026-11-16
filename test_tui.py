@@ -1,12 +1,21 @@
 """Tests for the Textual TUI, driven through Textual's test pilot."""
 import asyncio
 import json
+import time
 import unittest
 from unittest import mock
 
-from textual.widgets import Static, TextArea
+from textual.widgets import ProgressBar, Static, TextArea
+from textual.widgets._progress_bar import Bar
 
-from tui import PasswordApp, RecoverInputScreen, ResultScreen
+from tui import (
+    ComputingScreen,
+    ConfirmQuitScreen,
+    MenuScreen,
+    PasswordApp,
+    RecoverInputScreen,
+    ResultScreen,
+)
 
 SIZE = (100, 32)
 KNOWN_KEYS = json.dumps({"seed": "ab" * 32, "iterations": 1000}, indent=2)
@@ -93,6 +102,91 @@ class CopyTest(unittest.IsolatedAsyncioTestCase):
                 await pilot.click("#copy-password")
                 await pilot.pause()
         copy.assert_called_once_with("f8442cf378e8c06")
+
+
+class QuitTest(unittest.IsolatedAsyncioTestCase):
+    async def start_long_recovery(self, pilot):
+        keys = json.dumps({"seed": "ab" * 32, "iterations": 2_000_000_000})
+        await open_recover_and_submit(pilot, keys)
+        screen = await wait_for_screen(pilot, ComputingScreen)
+
+        async def first_update():
+            while text_of(screen, "#percent") == "0.000%":
+                await pilot.pause(0.05)
+
+        await asyncio.wait_for(first_update(), 10)
+        return screen
+
+    async def test_quit_mid_computation_cancels(self):
+        app = PasswordApp()
+
+        async def run():
+            async with app.run_test(size=SIZE) as pilot:
+                await self.start_long_recovery(pilot)
+                await pilot.press("q")
+                await wait_for_screen(pilot, ConfirmQuitScreen)
+                await pilot.click("#yes")
+                await pilot.pause()
+
+        await asyncio.wait_for(run(), 20)
+        self.assertFalse(app.is_running)
+
+    async def test_ui_stays_responsive_while_hashing(self):
+        async with PasswordApp().run_test(size=SIZE) as pilot:
+            await self.start_long_recovery(pilot)
+            started = time.perf_counter()
+            await pilot.press("q")
+            await wait_for_screen(pilot, ConfirmQuitScreen)
+            self.assertLess(time.perf_counter() - started, 0.5)
+            await pilot.click("#yes")
+
+    async def test_quit_declined_keeps_computing(self):
+        async with PasswordApp().run_test(size=SIZE) as pilot:
+            screen = await self.start_long_recovery(pilot)
+            await pilot.press("q")
+            await wait_for_screen(pilot, ConfirmQuitScreen)
+            await pilot.click("#no")
+            await wait_for_screen(pilot, ComputingScreen)
+            self.assertIs(pilot.app.screen, screen)
+            before = text_of(screen, "#percent")
+
+            async def advanced():
+                while text_of(screen, "#percent") == before:
+                    await pilot.pause(0.1)
+
+            await asyncio.wait_for(advanced(), 10)
+            pilot.app.exit()
+
+
+class LayoutTest(unittest.IsolatedAsyncioTestCase):
+    async def test_progress_bar_track_is_visible(self):
+        with mock.patch.object(ComputingScreen, "compute"):
+            async with PasswordApp().run_test(size=SIZE) as pilot:
+                await pilot.app.push_screen(ComputingScreen("recover", "ab" * 32, 1000))
+                await pilot.pause()
+                progress = pilot.app.screen.query_one(ProgressBar)
+                track = progress.query_one(Bar)
+                self.assertTrue(progress.region.contains_region(track.region))
+                self.assertGreater(track.region.width, 0)
+
+    async def test_every_panel_fits_80x24(self):
+        screens = [
+            MenuScreen(),
+            RecoverInputScreen(),
+            ComputingScreen("recover", "ab" * 32, 1000),
+            ResultScreen("f8442cf378e8c06", '{"seed": "' + "ab" * 32 + '", "iterations": 1000}'),
+        ]
+        with mock.patch.object(ComputingScreen, "compute"):
+            async with PasswordApp().run_test(size=(80, 24)) as pilot:
+                for screen in screens:
+                    await pilot.app.switch_screen(screen)
+                    await pilot.pause()
+                    panel = screen.query_one(".panel")
+                    with self.subTest(screen=type(screen).__name__):
+                        self.assertEqual(panel.max_scroll_y, 0)
+                await pilot.app.push_screen(ConfirmQuitScreen())
+                await pilot.pause()
+                self.assertEqual(pilot.app.screen.query_one(".panel").max_scroll_y, 0)
 
 
 if __name__ == "__main__":

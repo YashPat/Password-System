@@ -16,9 +16,11 @@ Center {
 .panel {
     width: 64;
     height: auto;
+    max-height: 100%;
+    overflow-y: auto;
     background: #1b1a27;
     border: round #2e2b40;
-    padding: 2 4;
+    padding: 1 4;
 }
 
 .title {
@@ -32,14 +34,14 @@ Center {
     width: 100%;
     text-align: center;
     color: #8b87a6;
-    margin-bottom: 2;
+    margin-bottom: 1;
 }
 
 .footer-hint {
     width: 100%;
     text-align: center;
     color: #8b87a6;
-    margin-top: 2;
+    margin-top: 1;
 }
 
 /* Menu */
@@ -55,7 +57,7 @@ Center {
 
 .option .hint {
     width: 8;
-    height: 3;
+    height: 1;
     content-align: right middle;
     color: #8b87a6;
 }
@@ -63,9 +65,16 @@ Center {
 /* Buttons */
 
 Button {
+    height: 1;
+    min-width: 10;
+    padding: 0 2;
+    border: none;
     background: #24223a;
     color: #e6e4f0;
-    border: tall #24223a;
+    text-style: bold;
+}
+
+Button:focus {
     text-style: bold;
 }
 
@@ -76,25 +85,21 @@ Button:hover {
 Button.mint:focus {
     background: #7ee8b5;
     color: #12111a;
-    border: tall #7ee8b5;
 }
 
 Button.violet:focus {
     background: #b39cf5;
     color: #12111a;
-    border: tall #b39cf5;
 }
 
 Button.pink:focus {
     background: #f59ac0;
     color: #12111a;
-    border: tall #f59ac0;
 }
 
 Button.peach:focus {
     background: #f9b98a;
     color: #12111a;
-    border: tall #f9b98a;
 }
 
 .violet-text {
@@ -133,15 +138,15 @@ Button.peach:focus {
 
 #computing-panel {
     width: 72;
-    padding: 2 6;
+    padding: 1 6;
 }
 
-#bar {
+#progress {
     width: 100%;
     margin-top: 1;
 }
 
-#bar Bar {
+#progress Bar {
     width: 1fr;
 }
 
@@ -187,13 +192,12 @@ Button.peach:focus {
 
 .secret-row {
     height: auto;
-    margin-top: 1;
 }
 
 .secret {
     width: 1fr;
     height: auto;
-    padding: 1 2;
+    padding: 0 2;
     background: #12111a;
     border: round #2e2b40;
     color: #7ee8b5;
@@ -213,4 +217,20 @@ Button.peach:focus {
 .warning {
     color: #f9b98a;
     margin-top: 1;
+}
+
+/* Quit confirmation */
+
+ConfirmQuitScreen {
+    align: center middle;
+    background: #12111a 70%;
+}
+
+#confirm-panel {
+    width: 56;
+    border: round #f9b98a;
+}
+
+.peach-text {
+    color: #f9b98a;
 }

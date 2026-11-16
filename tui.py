@@ -11,12 +11,14 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.color import Gradient
 from textual.containers import Center, Horizontal, Vertical
-from textual.screen import Screen
+from textual.screen import ModalScreen, Screen
 from textual.widgets import Button, Label, ProgressBar, Static, TextArea
 from textual.worker import get_current_worker
 
-from password_generator import create_password_with_keys
-from password_recovery import ComputationCancelled, recover_password
+import config
+from background import compute_password
+from password_generator import generate_random_seed
+from password_recovery import ComputationCancelled
 from progress import progress_stats
 from utils import format_keys, parse_keys, validate_keys
 
@@ -121,8 +123,33 @@ def _is_hex(value: str) -> bool:
     return True
 
 
+class ConfirmQuitScreen(ModalScreen[bool]):
+    """Asks before throwing away a running computation."""
+
+    BINDINGS = [Binding("escape", "dismiss(False)", "Cancel", show=False)]
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="confirm-panel", classes="panel"):
+            yield Static("quit now?", classes="title peach-text")
+            yield Static(
+                "The computation will stop and its progress will be lost.",
+                classes="subtitle",
+            )
+            with Horizontal(classes="actions"):
+                yield Button("Keep going", id="no", classes="mint")
+                yield Button("Quit", id="yes", classes="pink")
+
+    def on_mount(self) -> None:
+        self.query_one("#no", Button).focus()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(event.button.id == "yes")
+
+
 class ComputingScreen(Screen):
     """Live progress while the proof-of-work hashing runs."""
+
+    BINDINGS = [Binding("q", "confirm_quit", "Quit")]
 
     def __init__(
         self,
@@ -143,7 +170,7 @@ class ComputingScreen(Screen):
                 yield Static(title, classes="title")
                 yield Static(status, id="status", classes="subtitle")
                 yield ProgressBar(
-                    id="bar",
+                    id="progress",
                     total=100,
                     show_eta=False,
                     show_percentage=False,
@@ -159,36 +186,51 @@ class ComputingScreen(Screen):
                     with Horizontal(classes="stat"):
                         yield Label(name, classes="stat-name")
                         yield Static("—", id=stat_id, classes="stat-value")
+                yield Static("q quit", classes="footer-hint")
 
     def on_mount(self) -> None:
         self.compute()
 
+    def action_confirm_quit(self) -> None:
+        def quit_if_confirmed(confirmed: Optional[bool]) -> None:
+            if confirmed:
+                # The worker sees the cancellation within 0.1 s and stops the hashing process
+                self.workers.cancel_all()
+                self.app.exit(return_code=0)
+
+        self.app.push_screen(ConfirmQuitScreen(), quit_if_confirmed)
+
     @work(thread=True, exclusive=True)
     def compute(self) -> None:
+        # This thread only waits on the hashing process, so it barely
+        # competes with the UI; the hashing itself runs in another process.
         worker = get_current_worker()
 
         def on_progress(done: int, total: int, elapsed: float) -> None:
-            if worker.is_cancelled:
-                raise ComputationCancelled()
             self.app.call_from_thread(self.show_progress, done, total, elapsed)
 
         try:
             if self.mode == "generate":
-                password, seed, iterations = create_password_with_keys(
-                    on_progress=on_progress, verbose=False
-                )
+                # Same steps as password_generator.create_password_with_keys
+                seed = generate_random_seed()
+                iterations = config.calibrate_iterations(verbose=False)
                 keys_json: Optional[str] = format_keys(seed, iterations)
             else:
-                password = recover_password(self.seed, self.iterations, on_progress=on_progress)
-                keys_json = None
+                seed, iterations, keys_json = self.seed, self.iterations, None
+            password: Optional[str] = compute_password(
+                seed, iterations, on_progress, lambda: worker.is_cancelled
+            )
         except ComputationCancelled:
             return
-        self.app.call_from_thread(self.finish, password, keys_json)
+        except RuntimeError:
+            password = None
+        if not worker.is_cancelled:
+            self.app.call_from_thread(self.finish, password, keys_json)
 
     def show_progress(self, done: int, total: int, elapsed: float) -> None:
         stats = progress_stats(done, total, elapsed, datetime.now())
         self.query_one("#status", Static).update("hashing")
-        self.query_one("#bar", ProgressBar).update(progress=stats.fraction * 100)
+        self.query_one("#progress", ProgressBar).update(progress=stats.fraction * 100)
         self.query_one("#percent", Static).update(stats.percent)
         self.query_one("#speed", Static).update(stats.speed)
         self.query_one("#elapsed", Static).update(stats.elapsed)
@@ -197,8 +239,8 @@ class ComputingScreen(Screen):
 
     def finish(self, password: Optional[str], keys_json: Optional[str]) -> None:
         if password is None:
-            self.app.notify("Recovery failed: check your keys.", severity="error")
-            self.app.switch_screen(RecoverInputScreen())
+            self.app.notify("The computation failed unexpectedly.", severity="error")
+            self.app.switch_screen(MenuScreen())
             return
         self.app.switch_screen(ResultScreen(password, keys_json))
 
